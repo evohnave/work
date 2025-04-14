@@ -1,0 +1,61 @@
+---
+
+#########################################################
+#  Run this playbook from the ansible-repo root with:
+#  cd /path/to/ansible-repo
+#  ansible-playbook ~/utils/ansible/decrypt_secret.yaml \
+#    -i environments/george \
+#    -u maintuser \
+#    --private-key /path/to/private/key \
+#    --vault-password-file /path/to/vault/password/file \
+#    -e orchestrator=operations \
+#    -e secret_name=db_password \
+#    -e debug_enabled=true
+#
+#    debug_enabled is optional
+#########################################################
+
+- name: Retrieve password from 1_secrets
+  hosts: "{{ orchestrator }}"
+  vars:
+    env: "{{ inventory_dir | basename | default('george') }}"
+    base_path: "{{ lookup('ansible.builtin.env', 'PWD') }}"
+  tasks:
+    - name: Fail if orchestrator not provided
+      ansible.builtin.fail:
+        msg: "Orchestrator (orchestrator) must be provided"
+      when: orchestrator is not defined or orchestrator is empty
+      no_log: true
+
+    - name: Fail if secret name not provided
+      ansible.builtin.fail:
+        msg: "Secret name (secret_name) must be provided"
+      when: secret_name is not defined or secret_name is empty
+      no_log: true
+
+    - name: Load specific password from 1_secrets file
+      ansible.builtin.include_vars:
+        file: "{{ base_path }}/environments/{{ env }}/group_vars/all/1_secrets"
+        name: secrets
+      when: env is defined
+
+    - name: Debug available secret names in 1_secrets
+      ansible.builtin.debug:
+        msg: "Available secrets: {{ secrets.keys() | list }}"
+      when: secrets is defined and debug_enabled | default(false) | bool
+
+    - name: Fail if secret name not found in 1_secrets
+      ansible.builtin.fail:
+        msg: "Secret '{{ secret_name }}' not found in 1_secrets. Available secrets: {{ secrets.keys() | list }}"
+      when: secrets[secret_name] is not defined
+      no_log: true
+
+    - name: Set password to variable
+      ansible.builtin.set_fact:
+        my_password: "{{ secrets[secret_name] }}"
+      no_log: true
+
+    - name: Debug the password variable
+      ansible.builtin.debug:
+        msg: "{{ secret_name }} value: {{ my_password }}"
+      when: debug_enabled | default(false) | bool
